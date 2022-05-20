@@ -1,6 +1,5 @@
 [package]
-name                    = "grammar-grammar"
-description             = "A grammar specification language."
+name                    = "text-grammar"
 authors                 = ["Danny McClanahan <dmcC2@hypnicjerk.ai>"]
 license                 = "LGPL-3.0-or-later"
 repository              = "https://github.com/cosmicexplorer/grammar-grammar"
@@ -10,14 +9,5 @@ edition                 = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
-[workspace]
-resolver = "2"
-members = [
-  ".",
-  "text",
-]
-default-members = [
-  ".",
-  "text",
-]
+grammar-grammar = { path = ".." }
+regex = "1"

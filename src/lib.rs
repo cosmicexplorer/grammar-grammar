@@ -43,17 +43,13 @@ pub mod components {
   pub mod direct {
     use crate::pipeline::{CoversExtent, InputElement};
 
-    use core::hash::Hash;
-
-    pub trait Token: Hash+Eq+CoversExtent {
+    pub trait Token: CoversExtent {
       type Source: InputElement;
     }
   }
 
   pub mod indirect {
-    use core::hash::Hash;
-
-    pub trait Reference: Hash+Eq {}
+    pub trait Reference {}
   }
 
   /* pub mod parallel {} */
@@ -92,14 +88,14 @@ pub mod pipeline {
     messaging::{Readable, Writable},
   };
 
-  use core::{hash::Hash, ops::Range};
+  use core::ops::Range;
 
   pub trait CoversExtent: AsRef<[Self::Source]> {
     type Source;
     fn covers_extent(&self) -> Range<usize>;
   }
 
-  pub trait InputElement: Hash+Eq {}
+  pub trait InputElement {}
 
   pub trait Input: Readable {
     type ReadChunk: InputElement;

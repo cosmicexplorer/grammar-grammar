@@ -28,7 +28,31 @@
 
 use grammar_grammar::{messaging, pipeline};
 
-pub struct S;
+use regex;
+
+use std::iter::Iterator;
+
+pub struct StringInput(pub String);
+
+/* pub enum ReadState<R> { */
+/*   Ready(R), */
+/*   Done, */
+/* } */
+
+/* impl messaging::Readable for StringInput { */
+/*   type ReadChunk = ReadState<char>; */
+
+/*   fn read(&mut self) -> Self::ReadChunk {} */
+/* } */
+
+/* impl Iterator for StringInput { */
+/*   type Item = char; */
+/* } */
+
+/* pub enum Example { */
+/*   LessThan, */
+/*   GreaterThan, */
+/* } */
 
 #[cfg(test)]
 mod tests {

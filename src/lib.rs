@@ -28,14 +28,12 @@
 #![deny(clippy::all)]
 
 pub mod messaging {
-  pub trait Writable {
-    type WriteChunk;
-    fn write(&mut self, chunk: Self::WriteChunk);
-  }
-
   pub trait Readable {
     type ReadChunk;
-    fn read(&mut self) -> Self::ReadChunk;
+  }
+
+  pub trait Writable {
+    type WriteChunk;
   }
 }
 

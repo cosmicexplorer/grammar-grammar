@@ -29,11 +29,11 @@
 
 pub mod messaging {
   pub trait Readable {
-    type ReadChunk;
+    type ReadChunk: Send;
   }
 
   pub trait Writable {
-    type WriteChunk;
+    type WriteChunk: Send;
   }
 }
 

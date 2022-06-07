@@ -358,8 +358,8 @@ pub mod streams {
         ///
         /// In cases where *neither* end of the pipe is explicitly pulling or pushing, the pipe will
         /// have no way to advance (this can occur e.g. if `I` is
-        /// [`Source`](crate::control_flow::primitives::Source) and `O` is
-        /// [`Sink`](crate::control_flow::primitives::Sink)). In that case, this method
+        /// [`Source`](crate::control_flow::adapters::Source) and `O` is
+        /// [`Sink`](crate::control_flow::adapters::Sink)). In that case, this method
         /// is necessary.
         ///
         /// This method's containing impl specializes for the case where the ferried chunk is
@@ -371,7 +371,7 @@ pub mod streams {
         /// # futures::executor::block_on(async {
         /// use grammar_executor::{
         ///   streams::combinators::Pipe,
-        ///   control_flow::{Collector, primitives::{Source, Sink}},
+        ///   control_flow::{Collector, adapters::{Source, Sink}},
         /// };
         ///
         /// let source = Source::new([3, 4].into_iter());
@@ -530,7 +530,7 @@ pub mod streams {
         /// # futures::executor::block_on(async {
         /// use grammar_executor::{
         ///   streams::combinators::{Pipe, ReadMap},
-        ///   control_flow::{State, Collector, primitives::{Source, Sink}},
+        ///   control_flow::{State, Collector, adapters::{Source, Sink}},
         /// };
         ///
         /// let source = Source::new([3, 4].into_iter());
@@ -617,7 +617,7 @@ pub mod streams {
         /// # futures::executor::block_on(async {
         /// use grammar_executor::{
         ///   streams::combinators::{Pipe, WriteMap},
-        ///   control_flow::{State, Collector, primitives::{Source, Sink}},
+        ///   control_flow::{State, Collector, adapters::{Source, Sink}},
         /// };
         ///
         /// let source = Source::new([3, 4].into_iter());
@@ -694,11 +694,11 @@ pub mod control_flow {
 
   use displaydoc::Display;
 
-  /// Modelled off of the [rust generator nightly feature].
+  /// Modelled off of the [rust generator nightly feature][generator].
   ///
   /// Note that `Y` may be a [`Result`]!
   ///
-  /// [rust generator nightly feature]: https://doc.rust-lang.org/stable/unstable-book/language-features/generators.html
+  /// [generator]: https://doc.rust-lang.org/stable/unstable-book/language-features/generators.html
   #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
   pub enum State<Y> {
     /// <yielded {0}>
@@ -744,7 +744,7 @@ pub mod control_flow {
   /// # futures::executor::block_on(async {
   /// use grammar_executor::{
   ///   streams::combinators::Pipe,
-  ///   control_flow::{Collector, primitives::{Source, Sink}},
+  ///   control_flow::{Collector, adapters::{Source, Sink}},
   /// };
   ///
   /// let source = Source::new([3, 4].into_iter());
@@ -756,7 +756,7 @@ pub mod control_flow {
   /// # })
   /// # }
   ///```
-  pub mod primitives {
+  pub mod adapters {
     use super::{streams::traits::*, *};
 
     use async_mutex::Mutex;
@@ -769,7 +769,7 @@ pub mod control_flow {
       /// Provide values from a non-async iterable.
       ///
       ///```
-      /// use grammar_executor::{streams::traits::*, control_flow::{State, primitives::Source}};
+      /// use grammar_executor::{streams::traits::*, control_flow::{State, adapters::Source}};
       ///
       /// let source = Source::new([3, 4].into_iter());
       /// assert!(source.peek().unwrap() == State::Yielded(3));
@@ -846,7 +846,7 @@ pub mod control_flow {
       ///```
       /// # fn main() {
       /// # futures::executor::block_on(async {
-      /// use grammar_executor::{streams::traits::*, control_flow::{*, primitives::Sink}};
+      /// use grammar_executor::{streams::traits::*, control_flow::{*, adapters::Sink}};
       ///
       /// let (stream, sink) = Sink::<u8>::new();
       /// let sum = sink.fold(0, |acc, cur| acc + cur);
@@ -854,6 +854,31 @@ pub mod control_flow {
       /// stream.push(State::Yielded(4)).unwrap();
       /// stream.push(State::Completed).unwrap();
       /// assert!(sum.await == 7);
+      /// # })
+      /// # }
+      ///```
+      ///
+      /// This can also be used to coalesce [`Result`]s:
+      ///```
+      /// # fn main() {
+      /// # futures::executor::block_on(async {
+      /// use grammar_executor::{streams::traits::*, control_flow::{*, adapters::Sink}};
+      ///
+      /// // ???
+      /// let (stream, sink) = Sink::<Result<u8, String>>::new();
+      /// let sum = sink.fold::<Result<u8, String>, _>(Ok(0), |acc, cur| Ok(acc? + cur?));
+      /// stream.push(State::Yielded(Ok(3))).unwrap();
+      /// stream.push(State::Yielded(Ok(4))).unwrap();
+      /// stream.push(State::Completed).unwrap();
+      /// assert!(sum.await == Ok(7));
+      ///
+      /// // ???
+      /// let (stream, sink) = Sink::<Result<u8, String>>::new();
+      /// let sum = sink.fold::<Result<u8, String>, _>(Ok(0), |acc, cur| Ok(acc? + cur?));
+      /// stream.push(State::Yielded(Ok(3))).unwrap();
+      /// stream.push(State::Yielded(Err("err".to_string()))).unwrap();
+      /// stream.push(State::Completed).unwrap();
+      /// assert!(sum.await == Err("err".to_string()));
       /// # })
       /// # }
       ///```

@@ -79,220 +79,237 @@ pub mod streams {
     use super::{traits::*, *};
 
     use async_channel;
-    use displaydoc::Display;
 
-    /// An async channel implementing [`Peekable`] and [`ReadableStream`].
-    #[derive(Debug, Clone)]
-    pub struct ReadableChannel<T> {
-      receiver: async_channel::Receiver<T>,
-    }
+    mod readable {
+      use super::*;
 
-    impl<T> ReadableChannel<T> {
-      /// Create a new readable channel.
-      pub fn new(receiver: async_channel::Receiver<T>) -> Self { Self { receiver } }
-    }
+      /// An async channel implementing [`Peekable`] and [`ReadableStream`].
+      #[derive(Debug, Clone)]
+      pub struct ReadableChannel<T> {
+        receiver: async_channel::Receiver<T>,
+      }
 
-    impl<T> Readable for ReadableChannel<T>
-    where T: Send
-    {
-      type ReadChunk = T;
-    }
+      impl<T> ReadableChannel<T> {
+        /// Create a new readable channel.
+        pub fn new(receiver: async_channel::Receiver<T>) -> Self { Self { receiver } }
+      }
 
-    impl<T> Peekable for ReadableChannel<T>
-    where T: Send
-    {
-      fn peek(&self) -> Option<Self::ReadChunk> {
-        match self.receiver.try_recv() {
-          Ok(result) => Some(result),
-          Err(async_channel::TryRecvError::Empty) => None,
-          Err(e) => unreachable!("should never get this error peeking: {}", e),
+      impl<T> Readable for ReadableChannel<T>
+      where T: Send
+      {
+        type ReadChunk = T;
+      }
+
+      impl<T> Peekable for ReadableChannel<T>
+      where T: Send
+      {
+        fn peek(&self) -> Option<Self::ReadChunk> {
+          match self.receiver.try_recv() {
+            Ok(result) => Some(result),
+            Err(async_channel::TryRecvError::Empty) => None,
+            Err(e) => unreachable!("should never get this error peeking: {}", e),
+          }
         }
       }
-    }
 
-    #[async_trait]
-    impl<T> ReadableStream for ReadableChannel<T>
-    where T: Send
-    {
-      async fn read_one(&self) -> Self::ReadChunk {
-        self
-          .receiver
-          .recv()
-          .await
-          .expect(".recv() should never error")
-      }
-    }
-
-    impl<T> Read for ReadableChannel<T> where T: Send {}
-
-    /// An async channel implementing [`WritableStream`].
-    #[derive(Debug, Clone)]
-    pub struct WritableChannel<T> {
-      sender: async_channel::Sender<T>,
-    }
-
-    impl<T> WritableChannel<T> {
-      /// Create a new writable channel.
-      pub fn new(sender: async_channel::Sender<T>) -> Self { Self { sender } }
-    }
-
-    impl<T> Writable for WritableChannel<T>
-    where T: Send
-    {
-      type WriteChunk = T;
-    }
-
-    impl<T> Pushable for WritableChannel<T>
-    where T: Send
-    {
-      fn push(&self, chunk: Self::WriteChunk) -> Result<(), Self::WriteChunk> {
-        match self.sender.try_send(chunk) {
-          Ok(()) => Ok(()),
-          Err(async_channel::TrySendError::Full(val)) => Err(val),
-          Err(e) => unreachable!("should never get this error pushing: {}", e),
+      #[async_trait]
+      impl<T> ReadableStream for ReadableChannel<T>
+      where T: Send
+      {
+        async fn read_one(&self) -> Self::ReadChunk {
+          self
+            .receiver
+            .recv()
+            .await
+            .expect(".recv() should never error")
         }
       }
-    }
 
-    #[async_trait]
-    impl<T> WritableStream for WritableChannel<T>
-    where T: Send
-    {
-      async fn write_one(&self, chunk: Self::WriteChunk) {
-        self
-          .sender
-          .send(chunk)
-          .await
-          .expect(".send() should never error")
+      impl<T> Read for ReadableChannel<T> where T: Send {}
+    }
+    pub use readable::ReadableChannel;
+
+    mod writable {
+      use super::*;
+
+      /// An async channel implementing [`WritableStream`].
+      #[derive(Debug, Clone)]
+      pub struct WritableChannel<T> {
+        sender: async_channel::Sender<T>,
       }
+
+      impl<T> WritableChannel<T> {
+        /// Create a new writable channel.
+        pub fn new(sender: async_channel::Sender<T>) -> Self { Self { sender } }
+      }
+
+      impl<T> Writable for WritableChannel<T>
+      where T: Send
+      {
+        type WriteChunk = T;
+      }
+
+      impl<T> Pushable for WritableChannel<T>
+      where T: Send
+      {
+        fn push(&self, chunk: Self::WriteChunk) -> Result<(), Self::WriteChunk> {
+          match self.sender.try_send(chunk) {
+            Ok(()) => Ok(()),
+            Err(async_channel::TrySendError::Full(val)) => Err(val),
+            Err(e) => unreachable!("should never get this error pushing: {}", e),
+          }
+        }
+      }
+
+      #[async_trait]
+      impl<T> WritableStream for WritableChannel<T>
+      where T: Send
+      {
+        async fn write_one(&self, chunk: Self::WriteChunk) {
+          self
+            .sender
+            .send(chunk)
+            .await
+            .expect(".send() should never error")
+        }
+      }
+
+      impl<T> Write for WritableChannel<T> where T: Send {}
     }
+    pub use writable::WritableChannel;
 
-    impl<T> Write for WritableChannel<T> where T: Send {}
+    mod duplex {
+      use super::*;
 
-    /// An async channel implementing [`Duplex`].
-    ///
-    ///```
-    /// # fn main() {
-    /// # futures::executor::block_on(async {
-    /// use grammar_executor::streams::{traits::*, channels::*};
-    ///
-    /// // Infinite buffers.
-    /// let unbounded = DuplexChannel::<u8>::buffered(BufferConfig::Infinite);
-    /// unbounded.write_one(5).await;
-    /// assert!(5 == unbounded.read_one().await);
-    /// unbounded.write_one(6).await;
-    /// assert!(6 == unbounded.peek().unwrap());
-    ///
-    /// // Bounded buffers.
-    /// let bounded = DuplexChannel::<u8>::buffered(BufferConfig::Finite(3));
-    /// bounded.write_one(7).await;
-    /// assert!(7 == bounded.read_one().await);
-    /// # })
-    /// # }
-    ///```
-    #[derive(Debug, Clone)]
-    pub struct DuplexChannel<T> {
-      sender: WritableChannel<T>,
-      receiver: ReadableChannel<T>,
-    }
+      use displaydoc::Display;
 
-    /// Types of channel inside a [`DuplexChannel`].
-    #[derive(Copy, Clone, Debug, Display)]
-    #[ignore_extra_doc_attributes]
-    pub enum BufferConfig {
-      /// <finite buffer: {0}>
+      /// Types of channel inside a [`DuplexChannel`].
+      #[derive(Copy, Clone, Debug, Display)]
+      #[ignore_extra_doc_attributes]
+      pub enum BufferConfig {
+        /// <finite buffer: {0}>
+        ///
+        /// Choose a [bounded](async_channel::bounded) channel.
+        Finite(usize),
+        /// <infinite buffer>
+        ///
+        /// Choose an [unbounded](async_channel::unbounded) channel.
+        Infinite,
+      }
+
+      /// An async channel implementing [`Duplex`].
       ///
-      /// Choose a [bounded](async_channel::bounded) channel.
-      Finite(usize),
-      /// <infinite buffer>
+      ///```
+      /// # fn main() {
+      /// # futures::executor::block_on(async {
+      /// use grammar_executor::streams::{traits::*, channels::*};
       ///
-      /// Choose an [unbounded](async_channel::unbounded) channel.
-      Infinite,
-    }
+      /// // Infinite buffers.
+      /// let unbounded = DuplexChannel::<u8>::buffered(BufferConfig::Infinite);
+      /// unbounded.write_one(5).await;
+      /// assert!(5 == unbounded.read_one().await);
+      /// unbounded.write_one(6).await;
+      /// assert!(6 == unbounded.peek().unwrap());
+      ///
+      /// // Bounded buffers.
+      /// let bounded = DuplexChannel::<u8>::buffered(BufferConfig::Finite(3));
+      /// bounded.write_one(7).await;
+      /// assert!(7 == bounded.read_one().await);
+      /// # })
+      /// # }
+      ///```
+      #[derive(Debug, Clone)]
+      pub struct DuplexChannel<T> {
+        sender: WritableChannel<T>,
+        receiver: ReadableChannel<T>,
+      }
 
-    impl<T> DuplexChannel<T> {
-      /// Generate a duplex channel with the given buffering specification.
-      pub fn buffered(config: BufferConfig) -> Self {
-        let (sender, receiver) = match config {
-          BufferConfig::Finite(size) => async_channel::bounded(size),
-          BufferConfig::Infinite => async_channel::unbounded(),
-        };
-        Self {
-          sender: WritableChannel::new(sender),
-          receiver: ReadableChannel::new(receiver),
+      impl<T> DuplexChannel<T> {
+        /// Generate a duplex channel with the given buffering specification.
+        pub fn buffered(config: BufferConfig) -> Self {
+          let (sender, receiver) = match config {
+            BufferConfig::Finite(size) => async_channel::bounded(size),
+            BufferConfig::Infinite => async_channel::unbounded(),
+          };
+          Self {
+            sender: WritableChannel::new(sender),
+            receiver: ReadableChannel::new(receiver),
+          }
+        }
+
+        /// Extract the read and write ends.
+        pub fn split_ends(self) -> (WritableChannel<T>, ReadableChannel<T>) {
+          let Self { sender, receiver } = self;
+          (sender, receiver)
         }
       }
 
-      /// Extract the read and write ends.
-      pub fn split_ends(self) -> (WritableChannel<T>, ReadableChannel<T>) {
-        let Self { sender, receiver } = self;
-        (sender, receiver)
+      impl<T> Readable for DuplexChannel<T>
+      where T: Send
+      {
+        type ReadChunk = T;
       }
-    }
 
-    impl<T> Readable for DuplexChannel<T>
-    where T: Send
-    {
-      type ReadChunk = T;
-    }
-
-    impl<T> Peekable for DuplexChannel<T>
-    where T: Send
-    {
-      fn peek(&self) -> Option<Self::ReadChunk> {
-        let Self { receiver, .. } = self;
-        receiver.peek()
+      impl<T> Peekable for DuplexChannel<T>
+      where T: Send
+      {
+        fn peek(&self) -> Option<Self::ReadChunk> {
+          let Self { receiver, .. } = self;
+          receiver.peek()
+        }
       }
-    }
 
-    #[async_trait]
-    impl<T> ReadableStream for DuplexChannel<T>
-    where T: Send
-    {
-      async fn read_one(&self) -> Self::ReadChunk {
-        let Self { receiver, .. } = self;
-        receiver.read_one().await
+      #[async_trait]
+      impl<T> ReadableStream for DuplexChannel<T>
+      where T: Send
+      {
+        async fn read_one(&self) -> Self::ReadChunk {
+          let Self { receiver, .. } = self;
+          receiver.read_one().await
+        }
       }
-    }
 
-    impl<T> Read for DuplexChannel<T> where T: Send {}
+      impl<T> Read for DuplexChannel<T> where T: Send {}
 
-    impl<T> Writable for DuplexChannel<T>
-    where T: Send
-    {
-      type WriteChunk = T;
-    }
-
-    impl<T> Pushable for DuplexChannel<T>
-    where T: Send
-    {
-      fn push(&self, chunk: Self::WriteChunk) -> Result<(), Self::WriteChunk> {
-        let Self { sender, .. } = self;
-        sender.push(chunk)
+      impl<T> Writable for DuplexChannel<T>
+      where T: Send
+      {
+        type WriteChunk = T;
       }
-    }
 
-    #[async_trait]
-    impl<T> WritableStream for DuplexChannel<T>
-    where T: Send
-    {
-      async fn write_one(&self, chunk: Self::WriteChunk) {
-        let Self { sender, .. } = self;
-        sender.write_one(chunk).await;
+      impl<T> Pushable for DuplexChannel<T>
+      where T: Send
+      {
+        fn push(&self, chunk: Self::WriteChunk) -> Result<(), Self::WriteChunk> {
+          let Self { sender, .. } = self;
+          sender.push(chunk)
+        }
       }
+
+      #[async_trait]
+      impl<T> WritableStream for DuplexChannel<T>
+      where T: Send
+      {
+        async fn write_one(&self, chunk: Self::WriteChunk) {
+          let Self { sender, .. } = self;
+          sender.write_one(chunk).await;
+        }
+      }
+
+      impl<T> Write for DuplexChannel<T> where T: Send {}
+
+      impl<T> Duplex for DuplexChannel<T> where T: Send {}
     }
-
-    impl<T> Write for DuplexChannel<T> where T: Send {}
-
-    impl<T> Duplex for DuplexChannel<T> where T: Send {}
+    pub use duplex::{BufferConfig, DuplexChannel};
   }
 
   /// Implementations of stream traits that transform or combine other streams.
   pub mod combinators {
     use super::{traits::*, *};
 
-    /// A way to [`Pipe`] elements from one stream to another.
-    pub mod pipe {
+    mod pipe {
+      use crate::control_flow::State;
+
       use super::*;
 
       use async_mutex::Mutex;
@@ -302,7 +319,7 @@ pub mod streams {
       ///```
       /// # fn main() {
       /// # futures::executor::block_on(async {
-      /// use grammar_executor::streams::{traits::*, channels::*, combinators::pipe::Pipe};
+      /// use grammar_executor::streams::{traits::*, channels::*, combinators::Pipe};
       ///
       /// let left = DuplexChannel::<u8>::buffered(BufferConfig::Infinite);
       /// let right = DuplexChannel::<u8>::buffered(BufferConfig::Infinite);
@@ -319,17 +336,63 @@ pub mod streams {
         output: O,
       }
 
-      impl<I, O> Pipe<I, O>
-      where
-        I: ReadableStream,
-        O: WritableStream,
-      {
+      impl<I, O> Pipe<I, O> {
         /// Connect the input to the output stream.
         pub fn pipe(input: I, output: O) -> Self {
           Self {
             input,
             bottleneck: Mutex::new(()),
             output,
+          }
+        }
+      }
+
+      impl<T, I, O> Pipe<I, O>
+      where
+        I: ReadableStream<ReadChunk=State<T>>,
+        O: WritableStream<WriteChunk=State<T>>,
+      {
+        /// Extract all elements from the input stream and ferry them to the output stream.
+        ///
+        /// In cases where *neither* end of the pipe is explicitly pulling or pushing, the pipe will
+        /// have no way to advance (this can occur e.g. if `I` is
+        /// [`Source`](crate::control_flow::primitives::Source) and `O` is
+        /// [`Sink`](crate::control_flow::primitives::Sink)).
+        ///
+        ///```
+        /// # fn main() {
+        /// # futures::executor::block_on(async {
+        /// use grammar_executor::{
+        ///   streams::combinators::Pipe,
+        ///   control_flow::{Collector, primitives::{Source, Sink}},
+        /// };
+        ///
+        /// let source = Source::new([3, 4].into_iter());
+        /// let (stream, sink) = Sink::<u8>::new();
+        /// let pipe = Pipe::pipe(source, stream);
+        /// let sum = sink.fold(0, |acc, cur| acc + cur);
+        /// pipe.iterate().await;
+        /// assert!(sum.await == 7);
+        /// # })
+        /// # }
+        ///```
+        pub async fn iterate(self) {
+          let Self {
+            input,
+            bottleneck,
+            output,
+          } = self;
+          let _ = bottleneck.lock().await;
+          loop {
+            match input.read_one().await {
+              State::Yielded(chunk) => {
+                output.write_one(State::Yielded(chunk)).await;
+              },
+              State::Completed => {
+                output.write_one(State::Completed).await;
+                return;
+              },
+            }
           }
         }
       }
@@ -444,9 +507,9 @@ pub mod streams {
       {
       }
     }
+    pub use pipe::Pipe;
 
-    /// A way to [`Map`] one stream into another with a closure.
-    pub mod map {
+    mod map {
       use super::*;
 
       pub struct ReadMap<S, R, F>
@@ -508,6 +571,7 @@ pub mod streams {
       {
       }
     }
+    pub use map::ReadMap;
   }
 }
 
@@ -522,11 +586,6 @@ pub mod control_flow {
   /// Note that `Y` may be a [`Result`]!
   ///
   /// [rust generator nightly feature]: https://doc.rust-lang.org/stable/unstable-book/language-features/generators.html
-  /* pub trait Generator<R=()> { */
-  /*   type Yield; */
-  /*   type Return; */
-  /*   fn resume(&mut self, resume: R) -> State<Self::Yield, Self::Return>; */
-  /* } */
   #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
   pub enum State<Y> {
     /// <yielded {0}>
@@ -546,31 +605,44 @@ pub mod control_flow {
   }
 
   /// "Primitive" implementations of stream traits.
-  /*///
+  ///
   ///```
-  /// use grammar_executor
-  ///```*/
+  /// # fn main() {
+  /// # futures::executor::block_on(async {
+  /// use grammar_executor::{
+  ///   streams::combinators::Pipe,
+  ///   control_flow::{Collector, primitives::{Source, Sink}},
+  /// };
+  ///
+  /// let source = Source::new([3, 4].into_iter());
+  /// let (stream, sink) = Sink::<u8>::new();
+  /// let pipe = Pipe::pipe(source, stream);
+  /// let sum = sink.fold(0, |acc, cur| acc + cur);
+  /// pipe.iterate().await;
+  /// assert!(sum.await == 7);
+  /// # })
+  /// # }
+  ///```
   pub mod primitives {
     use super::{streams::traits::*, *};
 
     use async_mutex::Mutex;
 
-    /// A dynamic [`Source`] of elements from an iterator.
-    ///
-    ///```
-    /// use grammar_executor::{streams::traits::*, control_flow::{State, primitives::source::Source}};
-    ///
-    /// let source = Source::new([3, 4].into_iter());
-    /// assert!(source.peek().unwrap() == State::Yielded(3));
-    /// assert!(source.peek().unwrap() == State::Yielded(4));
-    /// assert!(source.peek().unwrap() == State::Completed);
-    ///```
-    pub mod source {
+    mod source {
       use super::*;
 
       use std::iter::Iterator;
 
       /// Provide values from a non-async iterable.
+      ///
+      ///```
+      /// use grammar_executor::{streams::traits::*, control_flow::{State, primitives::Source}};
+      ///
+      /// let source = Source::new([3, 4].into_iter());
+      /// assert!(source.peek().unwrap() == State::Yielded(3));
+      /// assert!(source.peek().unwrap() == State::Yielded(4));
+      /// assert!(source.peek().unwrap() == State::Completed);
+      ///```
       #[derive(Debug)]
       pub struct Source<I> {
         static_elements: Mutex<I>,
@@ -631,27 +703,27 @@ pub mod control_flow {
       {
       }
     }
+    pub use source::Source;
 
-    /// A way to collect streamed values into a [`Sink`].
-    ///
-    ///```
-    /// # fn main() {
-    /// # futures::executor::block_on(async {
-    /// use grammar_executor::{streams::traits::*, control_flow::{*, primitives::sink::Sink}};
-    ///
-    /// let (stream, sink) = Sink::<u8>::new();
-    /// let sum = sink.fold(0, |acc, cur| acc + cur);
-    /// stream.push(State::Yielded(3)).unwrap();
-    /// stream.push(State::Yielded(4)).unwrap();
-    /// stream.push(State::Completed).unwrap();
-    /// assert!(sum.await == 7);
-    /// # })
-    /// # }
-    ///```
-    pub mod sink {
+    mod sink {
       use super::{streams::channels::*, *};
 
       /// Collect values from another stream.
+      ///
+      ///```
+      /// # fn main() {
+      /// # futures::executor::block_on(async {
+      /// use grammar_executor::{streams::traits::*, control_flow::{*, primitives::Sink}};
+      ///
+      /// let (stream, sink) = Sink::<u8>::new();
+      /// let sum = sink.fold(0, |acc, cur| acc + cur);
+      /// stream.push(State::Yielded(3)).unwrap();
+      /// stream.push(State::Yielded(4)).unwrap();
+      /// stream.push(State::Completed).unwrap();
+      /// assert!(sum.await == 7);
+      /// # })
+      /// # }
+      ///```
       #[derive(Debug)]
       pub struct Sink<T> {
         receiver: ReadableChannel<State<T>>,
@@ -694,14 +766,6 @@ pub mod control_flow {
         }
       }
     }
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  #[test]
-  fn it_works() {
-    let result = 2 + 2;
-    assert_eq!(result, 4);
+    pub use sink::Sink;
   }
 }

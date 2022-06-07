@@ -56,9 +56,13 @@ pub mod components {
     use super::{direct, indirect};
 
     use core::iter::IntoIterator;
+    use displaydoc::Display;
 
+    #[derive(Debug, Display, Copy, Clone)]
     pub enum CaseElement<Tok, Ref> {
+      /// <tok {0}>
       Tok(Tok),
+      /// <ref {0}>
       Ref(Ref),
     }
 

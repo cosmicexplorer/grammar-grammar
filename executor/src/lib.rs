@@ -872,7 +872,7 @@ pub mod control_flow {
       /// # futures::executor::block_on(async {
       /// use grammar_executor::{streams::traits::*, control_flow::{*, adapters::Sink}};
       ///
-      /// // ???
+      /// // Coalesce Ok results.
       /// let (stream, sink) = Sink::<Result<u8, String>>::new();
       /// let sum = sink.fold::<Result<u8, String>, _>(Ok(0), |acc, cur| Ok(acc? + cur?));
       /// stream.push(State::Yielded(Ok(3))).unwrap();
@@ -880,11 +880,12 @@ pub mod control_flow {
       /// stream.push(State::Completed).unwrap();
       /// assert!(sum.await == Ok(7));
       ///
-      /// // ???
+      /// // Exit after err.
       /// let (stream, sink) = Sink::<Result<u8, String>>::new();
       /// let sum = sink.fold::<Result<u8, String>, _>(Ok(0), |acc, cur| Ok(acc? + cur?));
       /// stream.push(State::Yielded(Ok(3))).unwrap();
       /// stream.push(State::Yielded(Err("err".to_string()))).unwrap();
+      /// stream.push(State::Yielded(Ok(4))).unwrap();
       /// stream.push(State::Completed).unwrap();
       /// assert!(sum.await == Err("err".to_string()));
       /// # })

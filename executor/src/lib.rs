@@ -199,6 +199,10 @@ pub mod streams {
         Infinite,
       }
 
+      impl Default for BufferConfig {
+        fn default() -> Self { BufferConfig::Infinite }
+      }
+
       /// An async channel implementing [`Duplex`].
       ///
       ///```
@@ -244,6 +248,10 @@ pub mod streams {
           let Self { sender, receiver } = self;
           (sender, receiver)
         }
+      }
+
+      impl<T> Default for DuplexChannel<T> {
+        fn default() -> Self { Self::buffered(BufferConfig::default()) }
       }
 
       impl<T> Readable for DuplexChannel<T>
@@ -890,7 +898,7 @@ pub mod control_flow {
       impl<T> Sink<T> {
         /// Create a new (`writable_stream`, `sink`) pair.
         pub fn new() -> (WritableChannel<State<T>>, Self) {
-          let (sender, receiver) = DuplexChannel::buffered(BufferConfig::Infinite).split_ends();
+          let (sender, receiver) = DuplexChannel::default().split_ends();
           (sender, Self { receiver })
         }
       }

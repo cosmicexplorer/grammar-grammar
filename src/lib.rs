@@ -42,7 +42,7 @@ pub mod messaging {
 pub mod collection {
   use crate::components::{direct, indirect, synthesis};
 
-  use grammar_type_info::{Type, StaticTypeInfo};
+  use grammar_type_info::StaticTypeInfo;
 
   pub trait GrammarCase {
     type Tok: direct::Token;
@@ -55,17 +55,14 @@ pub mod collection {
     type Args;
     type Result: StaticTypeInfo;
     fn collect(&self, args: Self::Args) -> Self::Result;
-    fn result_type() -> Type {
-      Self::Result::TYPE
-    }
   }
 }
 
 pub mod components {
   pub mod direct {
-    use crate::pipeline::{CoversExtent, InputElement};
+    use crate::pipeline::{InputElement, Sourced};
 
-    pub trait Token: CoversExtent {
+    pub trait Token: Sourced {
       type Source: InputElement;
     }
   }
@@ -114,9 +111,25 @@ pub mod pipeline {
 
   use core::ops::Range;
 
-  pub trait CoversExtent: AsRef<[Self::Source]> {
+  pub trait Sourced {
     type Source;
-    fn covers_extent(&self) -> Range<usize>;
+  }
+
+  pub trait CollectiveSource<S> {}
+
+  pub trait SourceOrigin: Sourced {
+    type CS: CollectiveSource<Self::Source>;
+    fn original_source(&self) -> Self::CS;
+  }
+
+  #[derive(Debug, Clone)]
+  pub struct Extent(pub Range<usize>);
+
+  pub trait CoversExtent: Sourced + SourceOrigin {
+    fn covers_extent(&self) -> Extent;
+    /* fn source_range(&self) -> &'a [Self::Source] { */
+    /*   &self.original_source()[self.covers_extent().0] */
+    /* } */
   }
 
   pub trait InputElement {}
@@ -125,18 +138,22 @@ pub mod pipeline {
     type ReadChunk: InputElement;
   }
 
+  pub trait SourcedToken: AsRef<Self::Tok> + CoversExtent {
+    type Tok: Token;
+  }
+
   pub trait Tokenizer: Readable + Writable {
     type WriteChunk: InputElement;
-    type ReadChunk: Token;
+    type ReadChunk: SourcedToken;
   }
 
   pub trait Match: AsRef<Self::Ref> + CoversExtent {
-    type Source: Token;
+    type Source: SourcedToken;
     type Ref: Reference;
   }
 
   pub trait Parser: Readable + Writable {
-    type WriteChunk: Token;
+    type WriteChunk: SourcedToken;
     type ReadChunk: Match;
   }
 
@@ -146,10 +163,73 @@ pub mod pipeline {
 }
 
 #[cfg(test)]
+mod test_framework {
+  use super::{
+    components::{direct, indirect, synthesis},
+    pipeline,
+  };
+
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+  pub struct InputElement(pub u8);
+  impl pipeline::InputElement for InputElement {}
+
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+  pub struct Token(pub usize);
+  impl pipeline::Sourced for Token {
+    type Source = InputElement;
+  }
+  impl direct::Token for Token {
+    type Source = InputElement;
+  }
+
+  #[derive(Debug, Clone)]
+  pub struct InputSource;
+  impl pipeline::CollectiveSource<InputElement> for InputSource {}
+
+  #[derive(Debug, Clone)]
+  pub struct SourcedToken {
+    pub source: InputSource,
+    pub token: Token,
+    pub extent: pipeline::Extent,
+  }
+
+  impl pipeline::Sourced for SourcedToken {
+    type Source = InputElement;
+  }
+  impl pipeline::SourceOrigin for SourcedToken {
+    type CS = InputSource;
+    fn original_source(&self) -> Self::CS {
+      self.source.clone()
+    }
+  }
+  impl pipeline::CoversExtent for SourcedToken {
+    fn covers_extent(&self) -> pipeline::Extent {
+      self.extent.clone()
+    }
+  }
+  impl AsRef<Token> for SourcedToken {
+    fn as_ref(&self) -> &Token {
+      &self.token
+    }
+  }
+  impl pipeline::SourcedToken for SourcedToken {
+    type Tok = Token;
+  }
+}
+
+#[cfg(test)]
 mod tests {
+  use super::test_framework::*;
+  use crate::pipeline;
+
   #[test]
   fn it_works() {
-    let result = 2 + 2;
-    assert_eq!(result, 4);
+    let el = InputElement(0);
+    let tok = Token(0);
+    let st = SourcedToken {
+      source: InputSource,
+      token: tok,
+      extent: pipeline::Extent(0..1),
+    };
   }
 }

@@ -37,13 +37,23 @@ pub fn derive(input: TokenStream) -> TokenStream {
   let DeriveInput { ident, .. } = parse_macro_input!(input);
   let id = Uuid::new_v4().as_u128();
   let output = quote! {
-    impl ::grammar_type_info::TypeInfo for #ident {
+    impl ::grammar_type_info::StaticTypeInfo for #ident {
       const TYPE: ::grammar_type_info::Type =
         ::grammar_type_info::Type {
           type_id: ::grammar_type_info::TypeId {
              id: ::uuid::Uuid::from_u128(#id),
           },
         };
+    }
+
+    impl ::grammar_type_info::DynamicTypeInfo for #ident {
+      fn get_type(&self) -> ::grammar_type_info::Type {
+        ::grammar_type_info::Type {
+          type_id: ::grammar_type_info::TypeId {
+             id: ::uuid::Uuid::from_u128(#id),
+          },
+        }
+      }
     }
   };
   output.into()

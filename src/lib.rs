@@ -42,7 +42,7 @@ pub mod messaging {
 pub mod collection {
   use crate::components::{direct, indirect, synthesis};
 
-  use grammar_type_info::{Type, TypeInfo};
+  use grammar_type_info::{Type, StaticTypeInfo};
 
   pub trait GrammarCase {
     type Tok: direct::Token;
@@ -53,7 +53,7 @@ pub mod collection {
 
   pub trait Collector {
     type Args;
-    type Result: TypeInfo;
+    type Result: StaticTypeInfo;
     fn collect(&self, args: Self::Args) -> Self::Result;
     fn result_type() -> Type {
       Self::Result::TYPE

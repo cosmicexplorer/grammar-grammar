@@ -21,7 +21,7 @@
 //! Type information for grammars.
 //!
 //!```
-//! use grammar_type_info::TypeInfo;
+//! use grammar_type_info::{StaticTypeInfo, DynamicTypeInfo};
 //! use grammar_type_info_derive::GrammarTypeInfo;
 //!
 //! #[derive(GrammarTypeInfo)]
@@ -32,9 +32,16 @@
 //!
 //! assert!(S::TYPE.type_id.id.get_version().unwrap() == uuid::Version::Random);
 //! assert!(T::TYPE.type_id.id.get_version().unwrap() == uuid::Version::Random);
-//! assert!(S::TYPE.type_id.id != T::TYPE.type_id.id);
+//! assert!(S::TYPE.type_id != T::TYPE.type_id);
+//!
+//! let s = Box::new(S);
+//! let t = Box::new(T);
+//! assert!(s.get_type().type_id.id.get_version().unwrap() == uuid::Version::Random);
+//! assert!(t.get_type().type_id.id.get_version().unwrap() == uuid::Version::Random);
+//! assert!(s.get_type().type_id != t.get_type().type_id);
 //!```
 
+#![no_std]
 #![warn(missing_docs)]
 #![deny(rustdoc::missing_crate_level_docs)]
 /* Make all doctests fail if they produce any warnings. */
@@ -57,8 +64,14 @@ pub struct TypeId {
   pub id: Uuid,
 }
 
-/// Type information container.
-pub trait TypeInfo {
-  /// Single type information instance, constructed as a const literal via the derive macro.
+/// Type information available statically.
+pub trait StaticTypeInfo {
+  /// Constructed as a const literal via the derive macro.
   const TYPE: Type;
+}
+
+/// Type information available via a trait object.
+pub trait DynamicTypeInfo {
+  /// Constructed as a literal via the derive macro.
+  fn get_type(&self) -> Type;
 }

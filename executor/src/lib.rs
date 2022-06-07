@@ -30,6 +30,8 @@ use grammar_grammar::messaging::{Readable, Writable};
 
 use async_trait::async_trait;
 
+mod utils;
+
 /// Variants of stream-like objects.
 pub mod streams {
   use super::*;
@@ -357,7 +359,12 @@ pub mod streams {
         /// In cases where *neither* end of the pipe is explicitly pulling or pushing, the pipe will
         /// have no way to advance (this can occur e.g. if `I` is
         /// [`Source`](crate::control_flow::primitives::Source) and `O` is
-        /// [`Sink`](crate::control_flow::primitives::Sink)).
+        /// [`Sink`](crate::control_flow::primitives::Sink)). In that case, this method
+        /// is necessary.
+        ///
+        /// This method's containing impl specializes for the case where the ferried chunk is
+        /// a `State<T>`, because otherwise there is no concept of "completion", and the method
+        /// would never return.
         ///
         ///```
         /// # fn main() {
@@ -410,8 +417,8 @@ pub mod streams {
       {
         fn peek(&self) -> Option<Self::ReadChunk> {
           let Self { output, .. } = self;
-          /* Try getting a value out of the output stream, but don't attempt to ferry anything from the
-           * input stream. */
+          /* Try getting a value out of the output stream, but don't attempt to ferry anything from
+           * the input stream. */
           output.peek()
         }
       }
@@ -440,7 +447,8 @@ pub mod streams {
               output.write_one(inner_chunk).await;
             }
           }
-          /* (3) Wait to get the result of transforming those queued values from the output stream. */
+          /* (3) Wait to get the result of transforming those queued values from the output
+           * stream. */
           output.read_one().await
         }
       }
@@ -512,70 +520,175 @@ pub mod streams {
     mod map {
       use super::*;
 
-      pub struct ReadMap<S, R, F>
-      where
-        R: Readable,
-        F: Fn(R::ReadChunk) -> S,
-      {
-        inner: R,
-        transformer: F,
-      }
+      mod read {
+        use super::*;
 
-      impl<S, R, F> ReadMap<S, R, F>
-      where
-        R: Readable,
-        F: Fn(R::ReadChunk) -> S,
-      {
-        /// Construct a new instance mapping elements of readable stream `inner` with `transformer`.
-        pub fn new(inner: R, transformer: F) -> Self { Self { inner, transformer } }
-      }
+        /// Map a function over the outputs of a readable stream.
+        ///
+        ///```
+        /// # fn main() {
+        /// # futures::executor::block_on(async {
+        /// use grammar_executor::{
+        ///   streams::combinators::{Pipe, ReadMap},
+        ///   control_flow::{State, Collector, primitives::{Source, Sink}},
+        /// };
+        ///
+        /// let source = Source::new([3, 4].into_iter());
+        /// let shifted_source = ReadMap::new(source, |x: State<u8>| x.map_state(|x| x + 1));
+        /// let (stream, sink) = Sink::<u8>::new();
+        /// let pipe = Pipe::pipe(shifted_source, stream);
+        /// let sum = sink.fold(0, |acc, cur| acc + cur);
+        /// pipe.iterate().await;
+        /// assert!(sum.await == 9);
+        /// # })
+        /// # }
+        ///```
+        pub struct ReadMap<S, R, F>
+        where
+          R: Readable,
+          F: Fn(R::ReadChunk) -> S,
+        {
+          inner: R,
+          transformer: F,
+        }
 
-      impl<S, R, F> Readable for ReadMap<S, R, F>
-      where
-        S: Send,
-        R: Readable,
-        F: Fn(R::ReadChunk) -> S,
-      {
-        type ReadChunk = S;
-      }
+        impl<S, R, F> ReadMap<S, R, F>
+        where
+          R: Readable,
+          F: Fn(R::ReadChunk) -> S,
+        {
+          /// Construct a new instance mapping elements of readable stream `inner` with
+          /// `transformer`.
+          pub fn new(inner: R, transformer: F) -> Self { Self { inner, transformer } }
+        }
 
-      impl<S, R, F> Peekable for ReadMap<S, R, F>
-      where
-        S: Send,
-        R: Peekable,
-        F: Fn(R::ReadChunk) -> S+Send+Sync,
-      {
-        fn peek(&self) -> Option<Self::ReadChunk> {
-          let Self { inner, transformer } = self;
-          inner.peek().map(transformer)
+        impl<S, R, F> Readable for ReadMap<S, R, F>
+        where
+          S: Send,
+          R: Readable,
+          F: Fn(R::ReadChunk) -> S,
+        {
+          type ReadChunk = S;
+        }
+
+        impl<S, R, F> Peekable for ReadMap<S, R, F>
+        where
+          S: Send,
+          R: Peekable,
+          F: Fn(R::ReadChunk) -> S+Send+Sync,
+        {
+          fn peek(&self) -> Option<Self::ReadChunk> {
+            let Self { inner, transformer } = self;
+            inner.peek().map(transformer)
+          }
+        }
+
+        #[async_trait]
+        impl<S, R, F> ReadableStream for ReadMap<S, R, F>
+        where
+          S: Send,
+          R: ReadableStream,
+          F: Fn(R::ReadChunk) -> S+Send+Sync,
+        {
+          async fn read_one(&self) -> Self::ReadChunk {
+            (self.transformer)(self.inner.read_one().await)
+          }
+        }
+
+        impl<S, R, F> Read for ReadMap<S, R, F>
+        where
+          S: Send,
+          R: Read,
+          F: Fn(R::ReadChunk) -> S+Send+Sync,
+        {
         }
       }
+      pub use read::ReadMap;
 
-      #[async_trait]
-      impl<S, R, F> ReadableStream for ReadMap<S, R, F>
-      where
-        S: Send,
-        R: ReadableStream,
-        F: Fn(R::ReadChunk) -> S+Send+Sync,
-      {
-        async fn read_one(&self) -> Self::ReadChunk {
-          (self.transformer)(self.inner.read_one().await)
+      mod write {
+        use super::*;
+
+        use crate::utils::_Phantom;
+
+        /// Map a function over the inputs to a writable stream.
+        ///
+        ///```
+        /// # fn main() {
+        /// # futures::executor::block_on(async {
+        /// use grammar_executor::{
+        ///   streams::combinators::{Pipe, WriteMap},
+        ///   control_flow::{State, Collector, primitives::{Source, Sink}},
+        /// };
+        ///
+        /// let source = Source::new([3, 4].into_iter());
+        /// let (stream, sink) = Sink::<u8>::new();
+        /// let shifted_stream = WriteMap::new(stream, |x: State<u8>| x.map_state(|x| x + 1));
+        /// let pipe = Pipe::pipe(source, shifted_stream);
+        /// let sum = sink.fold(0, |acc, cur| acc + cur);
+        /// pipe.iterate().await;
+        /// assert!(sum.await == 9);
+        /// # })
+        /// # }
+        ///```
+        pub struct WriteMap<S, W, F>
+        where
+          W: Writable,
+          F: Fn(S) -> W::WriteChunk,
+        {
+          /* NB: This appears to be a compiler bug that doesn't occur with ReadMap (where S is in
+           * the return position). */
+          _ph: _Phantom<S>,
+          inner: W,
+          transformer: F,
+        }
+
+        impl<S, W, F> WriteMap<S, W, F>
+        where
+          W: Writable,
+          F: Fn(S) -> W::WriteChunk,
+        {
+          /// Construct a new instance mapping elements of writable stream `inner` with
+          /// `transformer`.
+          pub fn new(inner: W, transformer: F) -> Self {
+            Self {
+              inner,
+              transformer,
+              _ph: _Phantom::new(),
+            }
+          }
+        }
+
+        impl<S, W, F> Writable for WriteMap<S, W, F>
+        where
+          S: Send,
+          W: Writable,
+          F: Fn(S) -> W::WriteChunk,
+        {
+          type WriteChunk = S;
+        }
+
+        #[async_trait]
+        impl<S, W, F> WritableStream for WriteMap<S, W, F>
+        where
+          S: Send,
+          W: WritableStream,
+          F: Fn(S) -> W::WriteChunk+Send+Sync,
+        {
+          async fn write_one(&self, chunk: Self::WriteChunk) {
+            let Self {
+              inner, transformer, ..
+            } = self;
+            inner.write_one(transformer(chunk)).await;
+          }
         }
       }
-
-      impl<S, R, F> Read for ReadMap<S, R, F>
-      where
-        S: Send,
-        R: Read,
-        F: Fn(R::ReadChunk) -> S+Send+Sync,
-      {
-      }
+      pub use write::WriteMap;
     }
-    pub use map::ReadMap;
+    pub use map::{ReadMap, WriteMap};
   }
 }
 
-/// Use [streams] for control flow.
+/// Use [`streams`] for control flow.
 pub mod control_flow {
   use super::*;
 
@@ -592,6 +705,26 @@ pub mod control_flow {
     Yielded(Y),
     /// <completed>
     Completed,
+  }
+
+  impl<Y> State<Y> {
+    /// Map a function over any yielded value, or propagate completeness.
+    ///
+    ///```
+    /// use grammar_executor::control_flow::State;
+    ///
+    /// let f = |x| x + 1;
+    /// assert!(State::Yielded(0).map_state(f) == State::Yielded(1));
+    /// assert!(State::Yielded(1).map_state(f) == State::Yielded(2));
+    /// assert!(State::Completed.map_state(f) == State::Completed);
+    ///```
+    pub fn map_state<T, F>(self, f: F) -> State<T>
+    where F: Fn(Y) -> T {
+      match self {
+        Self::Yielded(val) => State::Yielded(f(val)),
+        Self::Completed => State::Completed,
+      }
+    }
   }
 
   /// Interface to apply folds over streams.

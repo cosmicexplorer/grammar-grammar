@@ -30,8 +30,6 @@ use grammar_grammar::messaging::{Readable, Writable};
 
 use async_trait::async_trait;
 
-mod utils;
-
 /// Variants of stream-like objects.
 pub mod streams {
   use super::*;
@@ -616,7 +614,7 @@ pub mod streams {
       mod write {
         use super::*;
 
-        use crate::utils::_Phantom;
+        use grammar_grammar::utils::PhantomSyncHack;
 
         /// Map a function over the inputs to a writable stream.
         ///
@@ -645,7 +643,7 @@ pub mod streams {
         {
           /* NB: This appears to be a compiler bug that doesn't occur with ReadMap (where S is in
            * the return position). */
-          _ph: _Phantom<S>,
+          _ph: PhantomSyncHack<S>,
           inner: W,
           transformer: F,
         }
@@ -661,7 +659,7 @@ pub mod streams {
             Self {
               inner,
               transformer,
-              _ph: _Phantom::new(),
+              _ph: PhantomSyncHack::default(),
             }
           }
         }

@@ -27,6 +27,8 @@
 #![doc(test(attr(deny(warnings))))]
 #![deny(clippy::all)]
 
+pub mod utils;
+
 pub mod messaging {
   pub trait Readable {
     type ReadChunk: Send;
@@ -34,6 +36,28 @@ pub mod messaging {
 
   pub trait Writable {
     type WriteChunk: Send;
+  }
+}
+
+pub mod collection {
+  use crate::components::{direct, indirect, synthesis};
+
+  use grammar_type_info::{Type, TypeInfo};
+
+  pub trait GrammarCase {
+    type Tok: direct::Token;
+    type Ref: indirect::Reference;
+    type Elements: Iterator<Item = synthesis::CaseElement<Self::Tok, Self::Ref>>;
+    fn elements(&self) -> Self::Elements;
+  }
+
+  pub trait Collector {
+    type Args;
+    type Result: TypeInfo;
+    fn collect(&self, args: Self::Args) -> Self::Result;
+    fn result_type() -> Type {
+      Self::Result::TYPE
+    }
   }
 }
 
@@ -53,12 +77,13 @@ pub mod components {
   /* pub mod parallel {} */
 
   pub mod synthesis {
-    use super::{direct, indirect};
+    use crate::collection::{Collector, GrammarCase};
 
-    use core::iter::IntoIterator;
     use displaydoc::Display;
 
-    #[derive(Debug, Display, Copy, Clone)]
+    use core::iter::IntoIterator;
+
+    #[derive(Debug, Display, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
     pub enum CaseElement<Tok, Ref> {
       /// <tok {0}>
       Tok(Tok),
@@ -66,20 +91,17 @@ pub mod components {
       Ref(Ref),
     }
 
-    pub trait Case: IntoIterator {
-      type Tok: direct::Token;
-      type Ref: indirect::Reference;
-      type Item: Into<CaseElement<Self::Tok, Self::Ref>>;
-    }
+    pub trait Case: GrammarCase + Collector {}
 
     pub trait Production: IntoIterator {
-      type C: Case;
+      type Result;
+      type C: Case<Result = Self::Result>;
       type Item: Into<Self::C>;
     }
 
     pub trait Grammar: IntoIterator {
       type P: Production;
-      type Item: Into<(<<Self::P as Production>::C as Case>::Ref, Self::P)>;
+      type Item: Into<(<<Self::P as Production>::C as GrammarCase>::Ref, Self::P)>;
     }
   }
 }
@@ -103,17 +125,17 @@ pub mod pipeline {
     type ReadChunk: InputElement;
   }
 
-  pub trait Tokenizer: Readable+Writable {
+  pub trait Tokenizer: Readable + Writable {
     type WriteChunk: InputElement;
     type ReadChunk: Token;
   }
 
-  pub trait Match: AsRef<Self::Ref>+CoversExtent {
+  pub trait Match: AsRef<Self::Ref> + CoversExtent {
     type Source: Token;
     type Ref: Reference;
   }
 
-  pub trait Parser: Readable+Writable {
+  pub trait Parser: Readable + Writable {
     type WriteChunk: Token;
     type ReadChunk: Match;
   }

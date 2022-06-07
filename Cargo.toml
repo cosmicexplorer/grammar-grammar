@@ -10,17 +10,22 @@ edition                 = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-displaydoc = { git = "https://github.com/yaahc/displaydoc", rev = "7159bb5c9d41ca3c7ccf04ae86ae3acb0ea12a27" }
+displaydoc              = { git = "https://github.com/yaahc/displaydoc", rev = "7159bb5c9d41ca3c7ccf04ae86ae3acb0ea12a27" }
+grammar-type-info       = { path = "type-info" }
 
 [workspace]
-resolver = "2"
-members = [
+resolver                = "2"
+members                 = [
   ".",
   "executor",
   "text",
+  "type-info",
+  "type-info/derive",
 ]
-default-members = [
+default-members         = [
   ".",
   "executor",
   "text",
+  "type-info",
+  "type-info/derive",
 ]

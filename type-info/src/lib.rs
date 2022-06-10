@@ -39,6 +39,9 @@
 //! assert!(s.get_type().type_id.id.get_version().unwrap() == uuid::Version::Random);
 //! assert!(t.get_type().type_id.id.get_version().unwrap() == uuid::Version::Random);
 //! assert!(s.get_type().type_id != t.get_type().type_id);
+//!
+//! assert!(s.get_type().type_id == S::TYPE.type_id);
+//! assert!(t.get_type().type_id == T::TYPE.type_id);
 //!```
 
 #![no_std]

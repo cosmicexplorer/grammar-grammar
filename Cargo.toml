@@ -19,6 +19,7 @@ resolver                = "2"
 members                 = [
   ".",
   "executor",
+  "model",
   "text",
   "type-info",
   "type-info/derive",
@@ -26,6 +27,7 @@ members                 = [
 default-members         = [
   ".",
   "executor",
+  "model",
   "text",
   "type-info",
   "type-info/derive",

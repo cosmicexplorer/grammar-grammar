@@ -1,7 +1,7 @@
 /*
  * Description: Generate a token stream from text using regex.
  *
- * Copyright (C) 2022 Danny McClanahan <dmcC2@hypnicjerk.ai>
+ * Copyright (C) 2022-2023 Danny McClanahan <dmcC2@hypnicjerk.ai>
  * SPDX-License-Identifier: LGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,7 +26,8 @@
 #![doc(test(attr(deny(warnings))))]
 #![deny(clippy::all)]
 
-use grammar_grammar::{messaging, pipeline};
+use grammar_executor::messaging;
+use grammar_grammar::pipeline;
 
 use regex;
 

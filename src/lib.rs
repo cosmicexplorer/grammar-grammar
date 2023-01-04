@@ -1,7 +1,7 @@
 /*
  * Description: A grammar specification language.
  *
- * Copyright (C) 2022 Danny McClanahan <dmcC2@hypnicjerk.ai>
+ * Copyright (C) 2022-2023 Danny McClanahan <dmcC2@hypnicjerk.ai>
  * SPDX-License-Identifier: LGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
@@ -27,17 +27,7 @@
 #![doc(test(attr(deny(warnings))))]
 #![deny(clippy::all)]
 
-pub mod utils;
-
-pub mod messaging {
-  pub trait Readable {
-    type ReadChunk: Send;
-  }
-
-  pub trait Writable {
-    type WriteChunk: Send;
-  }
-}
+use grammar_executor::messaging::{Readable, Writable};
 
 pub mod collection {
   use crate::components::{direct, indirect, synthesis};
@@ -68,7 +58,9 @@ pub mod components {
   }
 
   pub mod indirect {
-    pub trait Reference {}
+    pub trait Reference {
+      /* TODO!!! */
+    }
   }
 
   /* pub mod parallel {} */
@@ -104,10 +96,9 @@ pub mod components {
 }
 
 pub mod pipeline {
-  use super::{
-    components::{direct::Token, indirect::Reference},
-    messaging::{Readable, Writable},
-  };
+  use super::components::{direct::Token, indirect::Reference};
+
+  use grammar_executor::messaging::{Readable, Writable};
 
   use core::ops::Range;
 

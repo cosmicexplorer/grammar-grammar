@@ -15,7 +15,6 @@ async-mutex = "1.4.0"
 async-trait = "0.1.56"
 crossbeam = "0.8.1"
 displaydoc = { git = "https://github.com/yaahc/displaydoc", rev = "7159bb5c9d41ca3c7ccf04ae86ae3acb0ea12a27" }
-grammar-grammar = { path = ".." }
 # parking_lot = "0.12.1"
 thiserror = "1.0.30"
 

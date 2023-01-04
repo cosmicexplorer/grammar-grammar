@@ -11,6 +11,7 @@ edition                 = "2021"
 
 [dependencies]
 displaydoc              = { git = "https://github.com/yaahc/displaydoc", rev = "7159bb5c9d41ca3c7ccf04ae86ae3acb0ea12a27" }
+grammar-executor        = { path = "executor" }
 grammar-type-info       = { path = "type-info" }
 
 [workspace]

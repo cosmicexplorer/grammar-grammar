@@ -26,43 +26,25 @@
 #![doc(test(attr(deny(warnings))))]
 #![deny(clippy::all)]
 
-pub mod error {
-  use super::tokens::UniqueDescriptor;
-
-  use displaydoc::Display;
-  use thiserror::Error;
-
-  #[derive(Clone, Debug, Display, Error)]
-  pub enum InternalError {
-    /// args provided to token failed to validate against their specification: {0}
-    ArgsValidation(String),
-    /// token @ {0} registered twice
-    TokenRegistration(UniqueDescriptor),
-  }
+#[derive(Clone, Debug, displaydoc::Display, thiserror::Error)]
+pub enum InternalError {
+  /// token error: {0}
+  Token(#[from] tokens::TokenError),
+  /// parameter resolution error: {0}
+  Parameter(#[from] parameters::ParameterResolutionError),
 }
 
 pub mod tokens {
-  use super::error::InternalError;
+  use super::parameters::{ArgsInstance, ArgsSpec};
 
   use displaydoc::Display;
   use indexmap::IndexMap;
+  use thiserror::Error;
 
-  /* TODO: displaydoc! */
-  /// "argument specification" for a token
-  #[derive(Clone, Debug, PartialEq, Eq)]
-  pub enum ArgsSpec {
-    /// no arguments means each instance of this token is indistinguishable from the others
-    NoArguments,
-    /// may take some arguments sometimes
-    SomeArguments,
-  }
-
-  impl ArgsSpec {
-    pub fn validate<I>(instance: ArgsInstance<I>) -> Result<(), InternalError> {
-      Err(InternalError::ArgsValidation(format!(
-        "TODO: implement this method"
-      )))
-    }
+  #[derive(Clone, Debug, Display, Error)]
+  pub enum TokenError {
+    /// token @ {0} registered twice
+    TokenRegistration(UniqueDescriptor),
   }
 
   /// unique descriptor: '{0}'
@@ -92,24 +74,53 @@ pub mod tokens {
       }
     }
 
-    pub fn register_token_spec(&mut self, token_spec: TokenSpec) -> Result<(), InternalError> {
+    pub fn register_token_spec(&mut self, token_spec: TokenSpec) -> Result<(), TokenError> {
       let id = token_spec.unique_descriptor;
       if self.token_specs.insert(id, token_spec).is_some() {
-        Err(InternalError::TokenRegistration(id))
+        Err(TokenError::TokenRegistration(id))
       } else {
         Ok(())
       }
     }
   }
 
-  pub enum ArgsInstance<I> {
-    None,
-    Args(Vec<I>),
-  }
-
   pub struct TokenInstance<I> {
     pub unique_descriptor: UniqueDescriptor,
     pub args: ArgsInstance<I>,
+  }
+}
+
+pub mod parameters {
+  use displaydoc::Display;
+  use thiserror::Error;
+
+  #[derive(Clone, Debug, Display, Error)]
+  pub enum ParameterResolutionError {
+    /// args provided to token failed to validate against their specification: {0}
+    ArgsValidation(String),
+  }
+
+  /* TODO: displaydoc! */
+  /// "argument specification" for a token
+  #[derive(Clone, Debug, PartialEq, Eq)]
+  pub enum ArgsSpec {
+    /// no arguments means each instance of this token is indistinguishable from the others
+    NoArguments,
+    /// may take some arguments sometimes
+    SomeArguments,
+  }
+
+  impl ArgsSpec {
+    pub fn validate<I>(instance: ArgsInstance<I>) -> Result<(), ParameterResolutionError> {
+      Err(ParameterResolutionError::ArgsValidation(format!(
+        "TODO: implement this method"
+      )))
+    }
+  }
+
+  pub enum ArgsInstance<I> {
+    None,
+    Args(Vec<I>),
   }
 }
 

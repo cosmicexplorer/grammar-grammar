@@ -33,7 +33,7 @@ pub mod error {
   use thiserror::Error;
 
   #[derive(Clone, Debug, Display, Error)]
-  pub enum Error {
+  pub enum InternalError {
     /// args provided to token failed to validate against their specification: {0}
     ArgsValidation(String),
     /// token @ {0} registered twice
@@ -42,7 +42,7 @@ pub mod error {
 }
 
 pub mod tokens {
-  use super::error::Error;
+  use super::error::InternalError;
 
   use displaydoc::Display;
   use indexmap::IndexMap;
@@ -58,8 +58,8 @@ pub mod tokens {
   }
 
   impl ArgsSpec {
-    pub fn validate<I>(instance: ArgsInstance<I>) -> Result<(), Error> {
-      Err(Error::ArgsValidation(format!(
+    pub fn validate<I>(instance: ArgsInstance<I>) -> Result<(), InternalError> {
+      Err(InternalError::ArgsValidation(format!(
         "TODO: implement this method"
       )))
     }
@@ -92,10 +92,10 @@ pub mod tokens {
       }
     }
 
-    pub fn register_token_spec(&mut self, token_spec: TokenSpec) -> Result<(), Error> {
+    pub fn register_token_spec(&mut self, token_spec: TokenSpec) -> Result<(), InternalError> {
       let id = token_spec.unique_descriptor;
       if self.token_specs.insert(id, token_spec).is_some() {
-        Err(Error::TokenRegistration(id))
+        Err(InternalError::TokenRegistration(id))
       } else {
         Ok(())
       }

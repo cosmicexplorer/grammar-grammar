@@ -26,82 +26,102 @@
 #![doc(test(attr(deny(warnings))))]
 #![deny(clippy::all)]
 
-use indexmap::IndexMap;
-
 pub mod error {
+  use super::tokens::UniqueDescriptor;
+
   use displaydoc::Display;
   use thiserror::Error;
 
-  #[derive(Debug, Display, Error)]
+  #[derive(Clone, Debug, Display, Error)]
   pub enum Error {
     /// args provided to token failed to validate against their specification: {0}
-    ArgsValidationError(String),
+    ArgsValidation(String),
+    /// token @ {0} registered twice
+    TokenRegistration(UniqueDescriptor),
   }
 }
 
-/* TODO: displaydoc! */
-/// "argument specification" for a token
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ArgsSpec {
-  /// no arguments means each instance of this token is indistinguishable from the others
-  NoArguments,
-  /// may take some arguments sometimes
-  SomeArguments,
-}
+pub mod tokens {
+  use super::error::Error;
 
-impl ArgsSpec {
-  pub fn validate<I>(instance: ArgsInstance<I>) -> Result<(), error::Error> {
-    todo!()
+  use displaydoc::Display;
+  use indexmap::IndexMap;
+
+  /* TODO: displaydoc! */
+  /// "argument specification" for a token
+  #[derive(Clone, Debug, PartialEq, Eq)]
+  pub enum ArgsSpec {
+    /// no arguments means each instance of this token is indistinguishable from the others
+    NoArguments,
+    /// may take some arguments sometimes
+    SomeArguments,
   }
-}
 
-/* TODO: make these use UUIDs or something! */
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UniqueDescriptor(pub &'static str);
-
-/// a class of tokens which may be emitted by some stream
-#[derive(Clone, Debug)]
-pub struct TokenSpec {
-  pub unique_descriptor: UniqueDescriptor,
-  pub args_spec: ArgsSpec,
-}
-
-#[derive(Clone, Debug)]
-pub struct Registry {
-  token_specs: IndexMap<UniqueDescriptor, TokenSpec>,
-}
-
-impl Registry {
-  pub fn new() -> Self {
-    Self {
-      token_specs: IndexMap::new(),
+  impl ArgsSpec {
+    pub fn validate<I>(instance: ArgsInstance<I>) -> Result<(), Error> {
+      Err(Error::ArgsValidation(format!(
+        "TODO: implement this method"
+      )))
     }
   }
 
-  pub fn register_token_spec(&mut self, token_spec: TokenSpec) {
-    self
-      .token_specs
-      .insert(token_spec.unique_descriptor, token_spec)
-      /* TODO: make this return a Result! */
-      .expect("key must be unique");
+  /// unique descriptor: '{0}'
+  ///
+  /// A string used to uniquely identify a token class, to avoid duplicate registrations. This
+  /// string is also used in error messages, so it should briefly describe the token itself as well.
+  #[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
+  #[ignore_extra_doc_attributes]
+  pub struct UniqueDescriptor(pub &'static str);
+
+  /// a class of tokens which may be emitted by some stream
+  #[derive(Clone, Debug)]
+  pub struct TokenSpec {
+    pub unique_descriptor: UniqueDescriptor,
+    pub args_spec: ArgsSpec,
+  }
+
+  #[derive(Clone, Debug)]
+  pub struct Registry {
+    token_specs: IndexMap<UniqueDescriptor, TokenSpec>,
+  }
+
+  impl Registry {
+    pub fn new() -> Self {
+      Self {
+        token_specs: IndexMap::new(),
+      }
+    }
+
+    pub fn register_token_spec(&mut self, token_spec: TokenSpec) -> Result<(), Error> {
+      let id = token_spec.unique_descriptor;
+      if self.token_specs.insert(id, token_spec).is_some() {
+        Err(Error::TokenRegistration(id))
+      } else {
+        Ok(())
+      }
+    }
+  }
+
+  pub enum ArgsInstance<I> {
+    None,
+    Args(Vec<I>),
+  }
+
+  pub struct TokenInstance<I> {
+    pub unique_descriptor: UniqueDescriptor,
+    pub args: ArgsInstance<I>,
   }
 }
 
-pub enum ArgsInstance<I> {
-  None,
-  Args(Vec<I>),
-}
+pub mod control_flow {
+  use super::tokens::Registry;
 
-pub struct TokenInstance<I> {
-  pub unique_descriptor: UniqueDescriptor,
-  pub args: ArgsInstance<I>,
-}
+  pub trait Stream {
+    fn registry(&self) -> &Registry;
+  }
 
-pub trait Stream {
-  fn registry(&self) -> &Registry;
-}
-
-pub trait Parser {
-  type Input: Stream;
-  type Output: Stream;
+  pub trait Parser {
+    type Input: Stream;
+    type Output: Stream;
+  }
 }

@@ -84,20 +84,26 @@ pub mod tokens {
     }
   }
 
-  pub struct TokenInstance<I> {
-    pub unique_descriptor: UniqueDescriptor,
-    pub args: ArgsInstance<I>,
-  }
+  /* pub struct TokenInstance<I> { */
+  /*   pub unique_descriptor: UniqueDescriptor, */
+  /*   pub args: ArgsInstance, */
+  /* } */
 }
 
 pub mod parameters {
   use displaydoc::Display;
   use thiserror::Error;
 
+  use std::any::Any;
+
   #[derive(Clone, Debug, Display, Error)]
   pub enum ParameterResolutionError {
     /// args provided to token failed to validate against their specification: {0}
     ArgsValidation(String),
+    /// no args should have been provided to token, and yet these were: {0}
+    ArgsWereUnexpected(String),
+    /// arg requested at an out of bounds index: {0}
+    ArgOutOfBounds(String),
   }
 
   /* TODO: displaydoc! */
@@ -111,16 +117,102 @@ pub mod parameters {
   }
 
   impl ArgsSpec {
-    pub fn validate<I>(instance: ArgsInstance<I>) -> Result<(), ParameterResolutionError> {
+    pub fn validate(instance: ArgsInstance) -> Result<(), ParameterResolutionError> {
       Err(ParameterResolutionError::ArgsValidation(format!(
         "TODO: implement this method"
       )))
     }
   }
 
-  pub enum ArgsInstance<I> {
+  pub enum ArgsInstance {
     None,
-    Args(Vec<I>),
+    Args(Vec<Box<dyn Any>>),
+  }
+
+  impl ArgsInstance {
+    /// Return a slice to the boxed arguments, if any.
+    ///
+    ///```
+    /// use grammar_model::parameters::*;
+    ///
+    /// struct S;
+    ///
+    /// match ArgsInstance::None.get_args() {
+    ///   Err(ParameterResolutionError::ArgsWereUnexpected(_)) => (),
+    ///   _ => unreachable!(),
+    /// }
+    /// match ArgsInstance::Args(vec![Box::new(S)]).get_args() {
+    ///   Ok(args) if args.len() == 1 => (),
+    ///   _ => unreachable!(),
+    /// }
+    ///```
+    pub fn get_args(&self) -> Result<&[Box<dyn Any>], ParameterResolutionError> {
+      match self {
+        Self::None => Err(ParameterResolutionError::ArgsWereUnexpected(
+          "TODO".to_string(),
+        )),
+        Self::Args(args) => Ok(args.as_ref()),
+      }
+    }
+
+    /// Return a reference to a particular boxed argument.
+    ///
+    ///```
+    /// use grammar_model::parameters::*;
+    ///
+    /// struct S;
+    ///
+    /// let args = ArgsInstance::Args(vec![Box::new(S)]);
+    /// assert!(args.get_arg_at(0).is_ok());
+    /// match args.get_arg_at(1) {
+    ///   Err(ParameterResolutionError::ArgOutOfBounds(_)) => (),
+    ///   _ => unreachable!(),
+    /// }
+    ///```
+    pub fn get_arg_at(&self, index: usize) -> Result<&Box<dyn Any>, ParameterResolutionError> {
+      match self.get_args()?.get(index) {
+        Some(arg) => Ok(arg),
+        None => Err(ParameterResolutionError::ArgOutOfBounds("TODO".to_string())),
+      }
+    }
+  }
+
+  /// A callback to execute once a sub-parse/production has succeeded.
+  ///
+  ///```
+  /// # fn main() -> Result<(), grammar_model::parameters::ParameterResolutionError> {
+  /// use grammar_model::parameters::*;
+  ///
+  /// struct S(pub usize);
+  /// struct Add;
+  /// impl Resolver for Add {
+  ///   type Product = S;
+  ///   type Error = ParameterResolutionError;
+  ///   fn resolve(&self, args: ArgsInstance) -> Result<S, Self::Error> {
+  ///     let (a, b) = match args.get_args()? {
+  ///       [a, b] => (a, b),
+  ///       _ => unreachable!(),
+  ///     };
+  ///     let S(a) = *a.as_ref().downcast_ref::<S>().unwrap();
+  ///     let S(b) = *b.as_ref().downcast_ref::<S>().unwrap();
+  ///     Ok(S(a + b))
+  ///   }
+  /// }
+  ///
+  /// let args = ArgsInstance::Args(vec![Box::new(S(1)), Box::new(S(2))]);
+  /// let S(c) = Add.resolve(args)?;
+  /// assert!(c == 3);
+  /// # Ok(())
+  /// # }
+  ///```
+  pub trait Resolver {
+    /// e.g. an AST node
+    type Product;
+    /// this will be used to generate a parse error
+    type Error;
+
+    /// Execute this node's logic to transform its `args` into a single product.
+    fn resolve(&self, args: ArgsInstance) -> Result<Self::Product, Self::Error>;
   }
 }
 

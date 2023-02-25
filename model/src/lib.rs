@@ -216,15 +216,22 @@ pub mod parameters {
   }
 }
 
+/* TODO: example of a parser as a translator by using std::str functions to parse utf8 bytes! */
+
+///```
+/// use grammar_model::control_flow::*;
+///
+/// struct Utf8Parser;
+/// impl Parser for Utf8Parser {
+///   type Input = u8;
+///   type Output = char;
+/// }
+///
+/// ???
+///```
 pub mod control_flow {
-  use super::tokens::Registry;
-
-  pub trait Stream {
-    fn registry(&self) -> &Registry;
-  }
-
   pub trait Parser {
-    type Input: Stream;
-    type Output: Stream;
+    type Input;
+    type Output;
   }
 }

@@ -27,9 +27,8 @@
 #![deny(clippy::all)]
 
 use async_trait::async_trait;
-use regex::{Regex, RegexSet};
 
-use std::iter::Iterator;
+/* use std::iter::Iterator; */
 
 /* TODO: the below, via regex! */
 /* ["a.", "b()"] -> ["a", ".b", "(", ")"] */
@@ -46,13 +45,38 @@ trait ParseStream {
 mod tests {
   use super::*;
 
+  use regex::{Regex, RegexSet};
+
   #[test]
   fn it_works() {
-    let patterns = ["a\\.", "b\\(\\)"];
+    #[derive(Debug, PartialEq, Eq)]
+    enum Tokens {
+      Sym(String),
+      Dot,
+      OpenParen,
+      CloseParen,
+    }
+
+    impl Tokens {
+      pub fn patterns() -> RegexSet {
+        RegexSet::new(&["[a-zA-Z_\\-][a-zA-Z_\\-0-9]*", "\\.", "\\(", "\\)"]).unwrap()
+      }
+
+      pub fn match_index(text: &str, match_idx: usize) -> Self {
+        match match_idx {
+          0 => Self::Sym(text.to_string()),
+          1 => Self::Dot,
+          2 => Self::OpenParen,
+          3 => Self::CloseParen,
+          _ => unreachable!("only 4 patterns defined!"),
+        }
+      }
+    }
+
     let text = "a.b()";
 
     // Compile a set matching any of our patterns.
-    let set = RegexSet::new(&patterns).unwrap();
+    let set = Tokens::patterns();
     // Compile each pattern independently.
     let regexes: Vec<_> = set
       .patterns()
@@ -62,17 +86,28 @@ mod tests {
 
     // Match against the whole set first and identify the individual
     // matching patterns.
-    let matches: Vec<&str> = set
+    let matches: Vec<Tokens> = set
       .matches(text)
       .into_iter()
       // Dereference the match index to get the corresponding
       // compiled pattern.
-      .map(|match_idx| &regexes[match_idx])
+      .map(|match_idx| (&regexes[match_idx], match_idx))
       // To get match locations or any other info, we then have to search
       // the exact same text again, using our separately-compiled pattern.
-      .map(|pat| pat.find(text).unwrap().as_str())
+      .map(|(pat, match_idx)| (pat.find(text).unwrap().as_str(), match_idx))
+      .map(|(text, match_idx)| Tokens::match_index(text, match_idx))
       .collect();
 
-    assert_eq!(vec!["a.", "b()"], matches);
+    assert_eq!(
+      vec![
+        Tokens::Sym("a".to_string()),
+        Tokens::Dot,
+        /* FIXME: this doesn't work because we only search for matches once with .find() above! */
+        Tokens::Sym("b".to_string()),
+        Tokens::OpenParen,
+        Tokens::CloseParen,
+      ],
+      matches
+    );
   }
 }

@@ -28,6 +28,7 @@
 
 use async_trait::async_trait;
 
+use core::ops::Range;
 /* use std::iter::Iterator; */
 
 /* TODO: the below, via regex! */
@@ -73,8 +74,6 @@ mod tests {
       }
     }
 
-    let text = "a.b()";
-
     // Compile a set matching any of our patterns.
     let set = Tokens::patterns();
     // Compile each pattern independently.
@@ -84,19 +83,42 @@ mod tests {
       .map(|pat| Regex::new(pat).unwrap())
       .collect();
 
-    // Match against the whole set first and identify the individual
-    // matching patterns.
-    let matches: Vec<Tokens> = set
-      .matches(text)
-      .into_iter()
-      // Dereference the match index to get the corresponding
-      // compiled pattern.
-      .map(|match_idx| (&regexes[match_idx], match_idx))
-      // To get match locations or any other info, we then have to search
-      // the exact same text again, using our separately-compiled pattern.
-      .map(|(pat, match_idx)| (pat.find(text).unwrap().as_str(), match_idx))
-      .map(|(text, match_idx)| Tokens::match_index(text, match_idx))
-      .collect();
+    let mut text = "a.b()";
+    let mut matches: Vec<Tokens> = Vec::new();
+
+    /* Match against the entire RegexSet, locate each individual pattern match, find the leftmost
+     * match, produce a token, then shift the string right and repeat until no more matches are
+     * found. */
+    loop {
+      let mut earliest_range = Range {
+        start: text.len(),
+        end: text.len(),
+      };
+      let mut earliest_rx_idx: usize = 4;
+
+      // Match against the whole set first and identify the individual
+      // matching patterns.
+      for match_idx in set.matches(text).into_iter() {
+        // Dereference the match index to get the corresponding
+        // compiled pattern.
+        let pat = &regexes.get(match_idx).expect("match idx within size");
+        // To get match locations or any other info, we then have to search
+        // the exact same text again, using our separately-compiled pattern.
+        let range = pat.find(text).expect("we know this matches").range();
+        if range.start < earliest_range.start {
+          earliest_range = range;
+          earliest_rx_idx = match_idx;
+        }
+      }
+
+      if earliest_rx_idx == 4 {
+        break;
+      }
+
+      let earliest_matched_text = &text[earliest_range.clone()];
+      matches.push(Tokens::match_index(earliest_matched_text, earliest_rx_idx));
+      text = &text[earliest_range.end..];
+    }
 
     assert_eq!(
       vec![
